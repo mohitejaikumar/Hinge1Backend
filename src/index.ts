@@ -7,12 +7,6 @@ app.use(cors());
 
 app.use("/users" , usersRouter );
 
-
-
-
-
-
-
 app.get("/", (req,res)=>{
     res.send("Hello World");
 })

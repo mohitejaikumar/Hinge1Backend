@@ -38,6 +38,8 @@ model User {
   matched_id        Int
   matches           User[]                                @relation("matches")
   user              User?                                 @relation("matches", fields: [matched_id], references: [id])
+  chats_received    Chats[]                               @relation("chats_received")
+  chats_sent        Chats[]                               @relation("chats_sent")
 
   @@index([age, geohash])
 }
@@ -70,6 +72,16 @@ model Likes {
   behaviour_id Int?
   behaviour    Behaviour? @relation(fields: [behaviour_id], references: [id])
   comment      String
+}
+
+model Chats {
+  id          Int      @id @default(autoincrement())
+  sender_id   Int
+  receiver_id Int
+  message     String
+  sender      User     @relation("chats_sent", fields: [sender_id], references: [id])
+  receiver    User     @relation("chats_received", fields: [receiver_id], references: [id])
+  created_at  DateTime @default(now())
 }
 
 enum Gender {

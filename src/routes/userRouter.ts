@@ -325,7 +325,36 @@ router.get("/me" , authMiddleware , async(req:CustomRequest, res:Response)=>{
     }
 })
 
-// chats
+router.get("/chats/:id", authMiddleware , async (req:CustomRequest, res:Response)=>{
+    const otherUserId = req.params.id;
+    if(!otherUserId || typeof otherUserId !== "string"){
+        res.status(400).json({message:"Invalid Request"});
+        return;
+    }
+    try{
+        let chats = await prisma.$transaction(async (tx)=>{
+            const sender_chat = await tx.chats.findMany({
+                where:{
+                    sender_id:Number(req.userId!),
+                    receiver_id:Number(otherUserId)
+                }
+            })
+            const receiver_chat = await tx.chats.findMany({
+                where:{
+                    receiver_id:Number(req.userId!),
+                    sender_id:Number(otherUserId)
+                }
+            })
+            return [...sender_chat , ...receiver_chat];
+        })
+        chats = chats.sort((a,b)=>b.created_at.getTime()-a.created_at.getTime());
+        res.status(200).json(chats);
+    }
+    catch(err){
+        console.error("getChats Failed" , err);
+        res.status(500).json({message:"Internal Server Error"});
+    }
+})
 
 
 
