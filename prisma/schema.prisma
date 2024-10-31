@@ -16,12 +16,41 @@ datasource db {
 }
 
 model User {
-  id               Int    @id @default(autoincrement())
-  username         String
-  email            String @unique
-  password         String
-  phone_number     Int    @unique
-  gender           String
-  age              Int
-  preferred_gender String
+  id                Int                                   @id @default(autoincrement())
+  username          String
+  email             String                                @unique
+  password          String
+  phone_number      Int                                   @unique
+  gender            String
+  age               Int
+  preferred_gender  String
+  location          Unsupported("geography(Point, 4326)")
+  geohash           String
+  min_preferred_age Int
+  max_preferred_age Int
+  prompts           String
+  bloom_filter      String
+  images            Images[]
+  liked_by          Likes[]                               @relation("Liked_by")
+  liked_received    Likes[]                               @relation("Liked_received")
+
+  @@index([age, location])
+}
+
+model Images {
+  id      Int     @id @default(autoincrement())
+  url     String
+  user_id Int
+  user    User    @relation(fields: [user_id], references: [id])
+  likes   Likes[]
+}
+
+model Likes {
+  id       Int    @id @default(autoincrement())
+  image_id Int
+  image    Images @relation(fields: [image_id], references: [id])
+  liked_by Int
+  by_user  User   @relation("Liked_by", fields: [liked_by], references: [id])
+  liked_to Int
+  to_user  User   @relation("Liked_received", fields: [liked_to], references: [id])
 }
