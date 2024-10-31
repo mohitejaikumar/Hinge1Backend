@@ -31,8 +31,11 @@ model User {
   prompts           String
   bloom_filter      String
   images            Images[]
-  liked_by          Likes[]                               @relation("Liked_by")
-  liked_received    Likes[]                               @relation("Liked_received")
+  liked_by          Likes[]                               @relation("liked_by")
+  liked_received    Likes[]                               @relation("liked_received")
+  matched_id        Int
+  matches           User[]                                @relation("matches")
+  user              User?                                 @relation("matches", fields: [matched_id], references: [id])
 
   @@index([age, location])
 }
@@ -41,6 +44,7 @@ model Images {
   id      Int     @id @default(autoincrement())
   url     String
   user_id Int
+  comment String
   user    User    @relation(fields: [user_id], references: [id])
   likes   Likes[]
 }
@@ -50,7 +54,7 @@ model Likes {
   image_id Int
   image    Images @relation(fields: [image_id], references: [id])
   liked_by Int
-  by_user  User   @relation("Liked_by", fields: [liked_by], references: [id])
+  by_user  User   @relation("liked_by", fields: [liked_by], references: [id])
   liked_to Int
-  to_user  User   @relation("Liked_received", fields: [liked_to], references: [id])
+  to_user  User   @relation("liked_received", fields: [liked_to], references: [id])
 }

@@ -2,6 +2,7 @@ import {Request, Response, Router} from "express";
 import { LoginSchema } from "../zod";
 import prisma from "../db";
 import jwt from "jsonwebtoken";
+import { authMiddleware, CustomRequest } from "../middleware";
 
 const router = Router();
 
@@ -37,7 +38,9 @@ router.post('/login' , async (req:Request, res:Response)=>{
 })
 
 
-
+router.post("/liked" , authMiddleware ,async (req:CustomRequest, res:Response)=>{
+    
+})
 
 
 export default router;

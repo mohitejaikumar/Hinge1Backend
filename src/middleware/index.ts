@@ -10,7 +10,8 @@ export const authMiddleware = (req:CustomRequest, res:Response, next:NextFunctio
     const token = req.headers.authorization;
 
     if(!token || typeof token !== "string"){
-        return res.status(401).json({message:"Unauthorized"});
+        res.status(401).json({message:"Unauthorized"});
+        return;
     }
 
     try{
@@ -20,7 +21,7 @@ export const authMiddleware = (req:CustomRequest, res:Response, next:NextFunctio
         next();
     }
     catch(err){
-        return res.status(401).json({message:"Invalid Token"});
+        res.status(401).json({message:"Invalid Token"});
     }
 
 }
