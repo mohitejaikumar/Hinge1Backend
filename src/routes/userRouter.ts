@@ -1,13 +1,14 @@
 import {Request, Response, Router} from "express";
-import { BehaviourLikedSchema, ImageLikedSchema, LoginSchema, RegistrationSchema } from "../zod";
+import { BehaviourLikedSchema, ImageLikedSchema, LoginSchema, RegistrationSchema, RejectSchema } from "../zod";
 import prisma from "../db";
 import jwt from "jsonwebtoken";
 import { authMiddleware, CustomRequest } from "../middleware";
 import { S3Client } from "@aws-sdk/client-s3";
 import multer from "multer";
 import multerS3 from "multer-s3";
-import ngeohash from "ngeohash";
-import BitArray from "bit-array";
+import bcrypt from "bcrypt";
+import BitSet from "bitset";
+import { updateAddBloomFilter } from "../helpers";
 
 
 const s3Client = new S3Client({
@@ -32,6 +33,7 @@ const upload = multer({
 })
 
 
+
 const router = Router();
 
 router.post('/login' , async (req:Request, res:Response)=>{
@@ -52,8 +54,8 @@ router.post('/login' , async (req:Request, res:Response)=>{
         res.status(400).json({message:"User not found"});
         return;
     }
-
-    if(user.password !== loginDetails.password){
+    const passwordCompare = await bcrypt.compare(loginDetails.password,user.password);
+    if(!passwordCompare){
         res.status(400).json({message:"Invalid Credentials"});
         return;
     }
@@ -65,7 +67,6 @@ router.post('/login' , async (req:Request, res:Response)=>{
     res.json({token});
 })
 
-
 router.post("/imageLiked" , authMiddleware ,async (req:CustomRequest, res:Response)=>{
     const imageLikedDetails = req.body;
     const parsedResult = ImageLikedSchema.safeParse(imageLikedDetails);
@@ -74,13 +75,36 @@ router.post("/imageLiked" , authMiddleware ,async (req:CustomRequest, res:Respon
         return;
     }
     try{
-        await prisma.likes.create({
-            data:{
-                image_id:Number(parsedResult.data.imageId),
-                liked_by:Number(req.userId!),
-                liked_to:Number(parsedResult.data.likedUserId),
-                comment:parsedResult.data.comment
+        // check user exists
+        const user = await prisma.user.findUnique({
+            where:{
+                id:Number(req.userId!)
             }
+        })
+        if(!user){
+            res.status(400).json({message:"User not found"});
+            return;
+        }
+        // update bloom filter
+        const updatedBloomFilter = updateAddBloomFilter(user.bloom_filter , parsedResult.data.likedUserId);
+        
+        await prisma.$transaction(async (tx)=>{
+            await tx.likes.create({
+                data:{
+                    image_id:Number(parsedResult.data.imageId),
+                    liked_by:Number(req.userId!),
+                    liked_to:Number(parsedResult.data.likedUserId),
+                    comment:parsedResult.data.comment
+                }
+            })
+            await tx.user.update({
+                where:{
+                    id:Number(req.userId!)
+                },
+                data:{
+                    bloom_filter:updatedBloomFilter
+                }
+            })
         })
         console.log("imageLiked successfully");
     }
@@ -103,13 +127,36 @@ router.post("/behaviourLiked" , authMiddleware ,async (req:CustomRequest, res:Re
         return;
     }
     try{
-        await prisma.likes.create({
-            data:{
-                behaviour_id:Number(parsedResult.data.behaviourId),
-                liked_by:Number(req.userId!),
-                liked_to:Number(parsedResult.data.likedUserId),
-                comment:parsedResult.data.comment
+        // check user exists
+        const user = await prisma.user.findUnique({
+            where:{
+                id:Number(req.userId!)
             }
+        })
+        if(!user){
+            res.status(400).json({message:"User not found"});
+            return;
+        }
+        // update bloom filter
+        const updatedBloomFilter = updateAddBloomFilter(user.bloom_filter , parsedResult.data.likedUserId);
+        
+        await prisma.$transaction(async (tx)=>{
+            await tx.likes.create({
+                data:{
+                    behaviour_id:Number(parsedResult.data.behaviourId),
+                    liked_by:Number(req.userId!),
+                    liked_to:Number(parsedResult.data.likedUserId),
+                    comment:parsedResult.data.comment
+                }
+            })
+            await tx.user.update({
+                where:{
+                    id:Number(req.userId!)
+                },
+                data:{
+                    bloom_filter:updatedBloomFilter
+                }
+            })
         })
         console.log("berhavourLiked successfully");
     }
@@ -152,16 +199,18 @@ router.post("/register" , upload.array("images") , async (req, res:Response)=>{
         // calculate geohash
         const geohash = ngeohash.encode(parsedResult.data.latitude, parsedResult.data.longitude, 9);
 
+        // hash the password
+        const passwordHash = await bcrypt.hash(parsedResult.data.password, 10);
         try{
             
             // Create images Array 
-            await prisma.$transaction(async (tx)=>{
+            const user = await prisma.$transaction(async (tx)=>{
                 // Create new user
                 const user = await tx.user.create({
                     firstName:parsedResult.data.firstName,
                     lastName:parsedResult.data.lastName,
                     email:parsedResult.data.email,
-                    password:parsedResult.data.password,
+                    password:passwordHash,
                     phoneNumber:parsedResult.data.phoneNumber,
                     age:parsedResult.data.age,
                     gender:parsedResult.data.gender,
@@ -172,24 +221,111 @@ router.post("/register" , upload.array("images") , async (req, res:Response)=>{
                     longitude:parsedResult.data.longitude,
                     customRadius:parsedResult.data.customRadius,
                     geohash:geohash,
-                    bloom_filter: new BitArray(Number(process.env.BLOOM_FILTER_SIZE!)).toString()
+                    bloom_filter: new BitSet(process.env.BLOOM_FILTER_SIZE!).toString()
                 })
                 // Create Images
                 await tx.images.createMany({
                     data:images.map(image=>{
                         return{
                             url:image.url,
-                            user_id:12,
-                            
+                            user_id:user.id
                         }
                     })
                 })
+                // upload behaviours 
+                if(parsedResult.data.behaviours){
+                    await tx.behaviour.createMany({
+                        data:parsedResult.data.behaviours.map(behaviour=>{
+                            return{
+                                question:behaviour.question,
+                                answer:behaviour.answer,
+                                user_id:user.id
+                            }
+                        })
+                    })
+                }
+                return user;
             })
+
+            const token = jwt.sign({
+                userId:user.id
+            },process.env.JWT_SECRET!);
+
+            res.status(200).json({token});
         }
         catch(err){
             console.error("Registration Failed" , err);
+            res.status(500).json({message:"Internal Server Error"});
         }
 })
+
+router.post("/reject" , authMiddleware , async (req:CustomRequest, res:Response)=>{
+    const rejectDetails = req.body;
+    const parsedResult = RejectSchema.safeParse(rejectDetails);
+    if(!parsedResult.success){
+        res.status(400).json({message:"Invalid Body"});
+        return;
+    }
+    try{
+        // check user exists
+        const user = await prisma.user.findUnique({
+            where:{
+                id:Number(req.userId!)
+            }
+        })
+        if(!user){
+            res.status(400).json({message:"User not found"});
+            return;
+        }
+        // update bloom filter
+        const updatedBloomFilter = updateAddBloomFilter(user.bloom_filter , parsedResult.data.rejectedUserId);
+        await prisma.user.update({
+            where:{
+                id:Number(req.userId!)
+            },
+            data:{
+                bloom_filter:updatedBloomFilter
+            }
+        })
+        res.status(200).json({message:"Rejected successfully"});
+    }
+    catch(err){
+        console.error("Reject Failed" , err);
+        res.status(500).json({message:"Internal Server Error"});
+    }
+})
+
+router.get("/allLikes" , authMiddleware , async(req:CustomRequest, res:Response)=>{
+    try{
+        const likes = await prisma.likes.findMany({
+            where:{
+                liked_to:Number(req.userId!)
+            }
+        })
+        res.status(200).json(likes);
+    }
+    catch(err){
+        console.error("getAllLikes Failed" , err);
+        res.status(500).json({message:"Internal Server Error"});
+    }
+})
+
+router.get("/me" , authMiddleware , async(req:CustomRequest, res:Response)=>{
+    try{
+        const user = await prisma.user.findUnique({
+            where:{
+                id:Number(req.userId!)
+            }
+        })
+        res.status(200).json(user);
+    }
+    catch(err){
+        console.error("getUser Failed" , err);
+        res.status(500).json({message:"Internal Server Error"});
+    }
+})
+
+// chats
 
 
 

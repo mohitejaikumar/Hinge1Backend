@@ -37,6 +37,10 @@ export const RegistrationSchema = z.object({
     customRadius:z.number(),
 })
 
+export const RejectSchema = z.object({
+    rejectedUserId:z.string()
+})
+
 export type TRegistrationSchema = z.infer<typeof RegistrationSchema>;
 
 export interface Behaviour{
