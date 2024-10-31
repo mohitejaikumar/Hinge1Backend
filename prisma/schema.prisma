@@ -17,19 +17,21 @@ datasource db {
 
 model User {
   id                Int                                   @id @default(autoincrement())
-  username          String
+  first_name        String
+  last_name         String
   email             String                                @unique
   password          String
-  phone_number      Int                                   @unique
-  gender            String
+  phone_number      Int
+  gender            Gender
   age               Int
-  preferred_gender  String
+  preferred_gender  Gender[]
   location          Unsupported("geography(Point, 4326)")
   geohash           String
   min_preferred_age Int
   max_preferred_age Int
-  prompts           String
+  behaviour         Behaviour[]
   bloom_filter      String
+  custom_radius     Int
   images            Images[]
   liked_by          Likes[]                               @relation("liked_by")
   liked_received    Likes[]                               @relation("liked_received")
@@ -37,24 +39,41 @@ model User {
   matches           User[]                                @relation("matches")
   user              User?                                 @relation("matches", fields: [matched_id], references: [id])
 
-  @@index([age, location])
+  @@index([age, geohash])
 }
 
 model Images {
   id      Int     @id @default(autoincrement())
   url     String
   user_id Int
-  comment String
   user    User    @relation(fields: [user_id], references: [id])
   likes   Likes[]
 }
 
+model Behaviour {
+  id       Int     @id @default(autoincrement())
+  question String
+  answer   String
+  user_id  Int
+  user     User    @relation(fields: [user_id], references: [id])
+  likes    Likes[]
+}
+
 model Likes {
-  id       Int    @id @default(autoincrement())
-  image_id Int
-  image    Images @relation(fields: [image_id], references: [id])
-  liked_by Int
-  by_user  User   @relation("liked_by", fields: [liked_by], references: [id])
-  liked_to Int
-  to_user  User   @relation("liked_received", fields: [liked_to], references: [id])
+  id           Int        @id @default(autoincrement())
+  image_id     Int?
+  image        Images?    @relation(fields: [image_id], references: [id])
+  liked_by     Int
+  by_user      User       @relation("liked_by", fields: [liked_by], references: [id])
+  liked_to     Int
+  to_user      User       @relation("liked_received", fields: [liked_to], references: [id])
+  behaviour_id Int?
+  behaviour    Behaviour? @relation(fields: [behaviour_id], references: [id])
+  comment      String
+}
+
+enum Gender {
+  Male
+  Female
+  Lesbian
 }
