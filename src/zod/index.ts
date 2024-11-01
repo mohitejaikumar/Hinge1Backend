@@ -34,7 +34,6 @@ export const RegistrationSchema = z.object({
         question:z.string(),
         answer:z.string()
     })).optional(),
-    customRadius:z.number(),
 })
 
 export const RejectSchema = z.object({

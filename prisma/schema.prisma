@@ -25,13 +25,14 @@ model User {
   gender            Gender
   age               Int
   preferred_gender  Gender[]
+  longitude         String
+  latitude          String
   location          Unsupported("geography(Point, 4326)")
   geohash           String
   min_preferred_age Int
   max_preferred_age Int
   behaviour         Behaviour[]
   bloom_filter      String
-  custom_radius     Int
   images            Images[]
   liked_by          Likes[]                               @relation("liked_by")
   liked_received    Likes[]                               @relation("liked_received")

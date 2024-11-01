@@ -197,7 +197,7 @@ router.post("/register" , upload.array("images") , async (req, res:Response)=>{
         }));
 
         // calculate geohash
-        const geohash = ngeohash.encode(parsedResult.data.latitude, parsedResult.data.longitude, 9);
+        const geohash = ngeohash.encode(parsedResult.data.latitude, parsedResult.data.longitude, 50);
 
         // hash the password
         const passwordHash = await bcrypt.hash(parsedResult.data.password, 10);
@@ -219,7 +219,6 @@ router.post("/register" , upload.array("images") , async (req, res:Response)=>{
                     preferredGender:parsedResult.data.preferredGender,
                     latitude:parsedResult.data.latitude,
                     longitude:parsedResult.data.longitude,
-                    customRadius:parsedResult.data.customRadius,
                     geohash:geohash,
                     bloom_filter: new BitSet(process.env.BLOOM_FILTER_SIZE!).toString()
                 })
@@ -297,6 +296,15 @@ router.post("/reject" , authMiddleware , async (req:CustomRequest, res:Response)
 
 router.get("/allLikes" , authMiddleware , async(req:CustomRequest, res:Response)=>{
     try{
+        const user = await prisma.user.findUnique({
+            where:{
+                id:Number(req.userId!)
+            }
+        })
+        if(!user){
+            res.status(400).json({message:"User not found"});
+            return;
+        }
         const likes = await prisma.likes.findMany({
             where:{
                 liked_to:Number(req.userId!)
@@ -317,6 +325,10 @@ router.get("/me" , authMiddleware , async(req:CustomRequest, res:Response)=>{
                 id:Number(req.userId!)
             }
         })
+        if(!user){
+            res.status(400).json({message:"User not found"});
+            return;
+        }
         res.status(200).json(user);
     }
     catch(err){
@@ -332,6 +344,15 @@ router.get("/chats/:id", authMiddleware , async (req:CustomRequest, res:Response
         return;
     }
     try{
+        const user = await prisma.user.findUnique({
+            where:{
+                id:Number(req.userId!)
+            }
+        })
+        if(!user){
+            res.status(400).json({message:"User not found"});
+            return;
+        }
         let chats = await prisma.$transaction(async (tx)=>{
             const sender_chat = await tx.chats.findMany({
                 where:{
@@ -352,6 +373,40 @@ router.get("/chats/:id", authMiddleware , async (req:CustomRequest, res:Response
     }
     catch(err){
         console.error("getChats Failed" , err);
+        res.status(500).json({message:"Internal Server Error"});
+    }
+})
+// search in 100km radius 
+router.get("/matches" , authMiddleware , async (req:CustomRequest, res:Response)=>{
+    try{
+        // check user exists
+        const user = await prisma.user.findUnique({
+            where:{
+                id:Number(req.userId!)
+            }
+        })
+        if(!user){
+            res.status(400).json({message:"User not found"});
+            return;
+        }
+        // find all neighbour hash 
+        const neighbour = ngeohash.neighbors(user.geohash);
+        const geohashes = [...neighbour, user.geohash];
+        //Execute raw query using approximate and precise filtering
+        const preciseResults = await prisma.$queryRaw`
+            SELECT * FROM "User"
+            WHERE geohash = ANY(${geohashes})
+            AND ST_DWithin(
+                ST_SetSRID(ST_MakePoint(longitude, latitude), 4326),
+                ST_SetSRID(ST_MakePoint(${user.longitude}, ${user.latitude}), 4326),
+                100 * 1000  -- Radius in meters
+            )
+        `;
+
+        res.status(200).json(preciseResults);
+    }
+    catch(err){
+        console.error("getMatches Failed" , err);
         res.status(500).json({message:"Internal Server Error"});
     }
 })

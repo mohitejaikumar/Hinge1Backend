@@ -16,17 +16,17 @@ const prismaClientSingleton = () => {
                         INSERT INTO "User" (
                         first_name, last_name, email, password, phone_number, age, gender, 
                         min_preferred_age, max_preferred_age, preferred_gender, 
-                        location, geohash, bloom_filter
+                        location, geohash, bloom_filter, latitude, longitude
                         ) VALUES (
                         ${data.firstName}, ${data.lastName}, ${data.email}, ${data.password},
                         ${data.phoneNumber}, ${data.age}, ${data.gender}, ${data.min_age},
                         ${data.max_age}, ${JSON.stringify(data.preferredGender)}, 
                         ST_GeomFromText(${point}, 4326),
-                        ${data.geohash}, ${data.bloom_filter}
+                        ${data.geohash}, ${data.bloom_filter}, ${data.latitude}, ${data.longitude}
                         )
                         RETURNING id, first_name, last_name, email, phone_number, age, gender, 
                         min_preferred_age, max_preferred_age, preferred_gender, 
-                        geohash, bloom_filter;
+                        geohash, bloom_filter, latitude, longitude;
                     `;
                                         
                     return newUser;
