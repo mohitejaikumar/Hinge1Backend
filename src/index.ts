@@ -3,6 +3,7 @@ import cors from "cors";
 import usersRouter from "./routes/userRouter";
 import { WebSocketServer } from 'ws';
 import ChatManager from "./managers/ChatManager";
+import jwt from "jsonwebtoken";
 
 const wss = new WebSocketServer({ port: 8080 });
 
@@ -15,12 +16,24 @@ wss.on('connection', function connection(ws) {
     })=>{
         console.log('received: %s', raw);
         const {type , payload} = JSON.parse(raw.toString());
+        let userId="";
+        // check token 
+        try{
+            const decodedToken = jwt.verify(payload.token,process.env.JWT_SECRET!);
+            //@ts-ignore
+            userId = decodedToken.userId;
+        }
+        catch(err){
+            console.error("Invalid Token" , err);
+            return;
+        }
+        
         switch(type){
             case "join":
-                await ChatManager.getInstance().join(payload.userId,ws);
+                await ChatManager.getInstance().join(userId,ws);
                 break;
             case "chat":
-                await ChatManager.getInstance().sendMessage(payload.senderId,payload.receiverId,payload.message);
+                await ChatManager.getInstance().sendMessage(userId,payload.receiverId,payload.message);
                 break;
             default:
                 break;

@@ -344,12 +344,18 @@ router.get("/chats/:id", authMiddleware , async (req:CustomRequest, res:Response
         return;
     }
     try{
+        // check user exists
         const user = await prisma.user.findUnique({
             where:{
                 id:Number(req.userId!)
             }
         })
-        if(!user){
+        const otherUser = await prisma.user.findUnique({
+            where:{
+                id:Number(otherUserId)
+            }
+        })
+        if(!user || !otherUser){
             res.status(400).json({message:"User not found"});
             return;
         }
