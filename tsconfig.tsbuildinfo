@@ -1,0 +1,1 @@
+{"root":["./src/index.ts","./src/db/index.ts","./src/helpers/index.ts","./src/managers/chatmanager.ts","./src/middleware/index.ts","./src/routes/userrouter.ts","./src/zod/index.ts"],"version":"5.6.3"}
