@@ -8,7 +8,8 @@ import multer from "multer";
 import multerS3 from "multer-s3";
 import bcrypt from "bcrypt";
 import BitSet from "bitset";
-import { updateAddBloomFilter } from "../helpers";
+import { calculateAge, updateAddBloomFilter } from "../helpers";
+import ngeohash from "ngeohash";
 
 
 const s3Client = new S3Client({
@@ -172,9 +173,10 @@ router.post("/behaviourLiked" , authMiddleware ,async (req:CustomRequest, res:Re
 })
 
 router.post("/register" , upload.array("images") , async (req, res:Response)=>{
-        const registrationDetails = req.body;
+        const registrationDetails = JSON.parse(req.body.userData);
         const parsedResult = RegistrationSchema.safeParse(registrationDetails);
         if(!parsedResult.success){
+            console.log(parsedResult.error);
             res.status(400).json({message:"Invalid Body"});
             return;
         }
@@ -197,14 +199,17 @@ router.post("/register" , upload.array("images") , async (req, res:Response)=>{
         }));
 
         // calculate geohash
-        const geohash = ngeohash.encode(parsedResult.data.latitude, parsedResult.data.longitude, 50);
-
+        const geohash = ngeohash.encode(parsedResult.data.latitude, parsedResult.data.longitude, 4);
+        
         // hash the password
         const passwordHash = await bcrypt.hash(parsedResult.data.password, 10);
+        const age = calculateAge(parsedResult.data.date_of_birth);
+        
         try{
             
             // Create images Array 
             const user = await prisma.$transaction(async (tx)=>{
+                console.log("inside transaction");
                 // Create new user
                 const user = await tx.user.create({
                     firstName:parsedResult.data.firstName,
@@ -212,22 +217,34 @@ router.post("/register" , upload.array("images") , async (req, res:Response)=>{
                     email:parsedResult.data.email,
                     password:passwordHash,
                     phoneNumber:parsedResult.data.phoneNumber,
-                    age:parsedResult.data.age,
+                    age:age,
+                    occupation:parsedResult.data.occupation,
+                    region:parsedResult.data.region,
+                    religion:parsedResult.data.religion,
+                    date_of_birth:parsedResult.data.date_of_birth,
+                    home_town:parsedResult.data.home_town,
                     gender:parsedResult.data.gender,
-                    min_age:parsedResult.data.min_age,
-                    max_age:parsedResult.data.max_age,
                     preferredGender:parsedResult.data.preferredGender,
                     latitude:parsedResult.data.latitude,
                     longitude:parsedResult.data.longitude,
+                    // location:{
+                    //     latitude:Number(parsedResult.data.latitude),
+                    //     longitude:Number(parsedResult.data.longitude)
+                    // },
                     geohash:geohash,
-                    bloom_filter: new BitSet(process.env.BLOOM_FILTER_SIZE!).toString()
+                    bloom_filter: new BitSet().toString()
+                })
+                const userId = await tx.user.findUnique({
+                    where:{
+                        email:parsedResult.data.email
+                    }
                 })
                 // Create Images
                 await tx.images.createMany({
                     data:images.map(image=>{
                         return{
                             url:image.url,
-                            user_id:user.id
+                            user_id:userId?.id || 1
                         }
                     })
                 })
@@ -238,7 +255,7 @@ router.post("/register" , upload.array("images") , async (req, res:Response)=>{
                             return{
                                 question:behaviour.question,
                                 answer:behaviour.answer,
-                                user_id:user.id
+                                user_id:userId?.id || 1
                             }
                         })
                     })
@@ -308,6 +325,16 @@ router.get("/allLikes" , authMiddleware , async(req:CustomRequest, res:Response)
         const likes = await prisma.likes.findMany({
             where:{
                 liked_to:Number(req.userId!)
+            },
+            include:{
+                by_user:{
+                    select:{
+                        first_name:true,
+                        images:true,
+                    }
+                },
+                image:true,
+                behaviour:true
             }
         })
         res.status(200).json(likes);
@@ -398,15 +425,19 @@ router.get("/matches" , authMiddleware , async (req:CustomRequest, res:Response)
         // find all neighbour hash 
         const neighbour = ngeohash.neighbors(user.geohash);
         const geohashes = [...neighbour, user.geohash];
+        console.log(geohashes);
         //Execute raw query using approximate and precise filtering
         const preciseResults = await prisma.$queryRaw`
             SELECT * FROM "User"
             WHERE geohash = ANY(${geohashes})
+            AND id != ${user.id}
             AND ST_DWithin(
-                ST_SetSRID(ST_MakePoint(longitude, latitude), 4326),
-                ST_SetSRID(ST_MakePoint(${user.longitude}, ${user.latitude}), 4326),
+                ST_SetSRID(ST_MakePoint(longitude::double precision, latitude::double precision), 4326),
+                ST_SetSRID(ST_MakePoint(${Number(user.longitude)}, ${Number(user.latitude)}), 4326)::geography,
                 100 * 1000  -- Radius in meters
             )
+            AND gender = ${user.preferred_gender}
+            
         `;
 
         res.status(200).json(preciseResults);

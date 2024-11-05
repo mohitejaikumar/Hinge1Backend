@@ -55,6 +55,11 @@ app.get("/", (req,res)=>{
     res.send("Hello World");
 })
 
+app.post('/upload' , async (req,res)=>{
+    console.log(req.body);
+    res.send("Uploaded");
+})
+
 app.listen(3000, ()=>{
     console.log("Server started on port 3000");
 })

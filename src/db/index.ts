@@ -9,24 +9,28 @@ const prismaClientSingleton = () => {
                 async create(data:TRegistrationSchema & {
                     geohash:string,
                     bloom_filter:string,
+                    // location:{
+                    //     latitude:number,
+                    //     longitude:number
+                    // }
                 }){
                     
                     const point = `POINT(${data.longitude} ${data.latitude})`;
-                    const newUser:User = await prisma.$queryRaw`
+                    const newUser:User&{
+                        id:number
+                    } = await prisma.$queryRaw`
                         INSERT INTO "User" (
-                        first_name, last_name, email, password, phone_number, age, gender, 
-                        min_preferred_age, max_preferred_age, preferred_gender, 
-                        location, geohash, bloom_filter, latitude, longitude
+                        first_name, last_name, email, password, phone_number, age, gender, preferred_gender, 
+                        geohash, bloom_filter, latitude, longitude, occupation, region, religion, date_of_birth, home_town
                         ) VALUES (
                         ${data.firstName}, ${data.lastName}, ${data.email}, ${data.password},
-                        ${data.phoneNumber}, ${data.age}, ${data.gender}, ${data.min_age},
-                        ${data.max_age}, ${JSON.stringify(data.preferredGender)}, 
-                        ST_GeomFromText(${point}, 4326),
-                        ${data.geohash}, ${data.bloom_filter}, ${data.latitude}, ${data.longitude}
+                        ${data.phoneNumber}, ${data.age}, ${data.gender}, ${data.preferredGender}, 
+                        -- ST_GeomFromText(${point}, 4326),
+                        ${data.geohash}, ${data.bloom_filter}, ${data.latitude}, ${data.longitude}, 
+                        ${data.occupation}, ${data.region}, ${data.religion}, ${data.date_of_birth}, ${data.home_town}
                         )
-                        RETURNING id, first_name, last_name, email, phone_number, age, gender, 
-                        min_preferred_age, max_preferred_age, preferred_gender, 
-                        geohash, bloom_filter, latitude, longitude;
+                        RETURNING id, first_name, last_name, email, phone_number, age, gender, preferred_gender, 
+                        geohash, bloom_filter, latitude, longitude, occupation, region, religion, date_of_birth, home_town;
                     `;
                                         
                     return newUser;

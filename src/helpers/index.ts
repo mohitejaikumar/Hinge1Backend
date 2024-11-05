@@ -20,3 +20,22 @@ export const updateAddBloomFilter = (filter:string , item:string): string =>{
 
     return oldBitset.toString(numberOfBits);
 }
+
+
+export function calculateAge(dob:string) {
+    const birthDate = new Date(dob);
+    const today = new Date();
+    
+    let age = today.getFullYear() - birthDate.getFullYear();
+    
+    // Adjust if the birthday hasn't occurred yet this year
+    const hasBirthdayOccurred = 
+        today.getMonth() > birthDate.getMonth() || 
+        (today.getMonth() === birthDate.getMonth() && today.getDate() >= birthDate.getDate());
+
+    if (!hasBirthdayOccurred) {
+        age -= 1;
+    }
+
+    return age;
+}
