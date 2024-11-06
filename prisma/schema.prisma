@@ -16,34 +16,34 @@ datasource db {
 }
 
 model User {
-  id               Int         @id @default(autoincrement())
-  first_name       String
-  last_name        String
-  email            String      @unique
-  password         String
-  phone_number     String
-  gender           String
-  preferred_gender String
-  longitude        String
-  latitude         String
+  id                Int         @id @default(autoincrement())
+  first_name        String
+  last_name         String
+  email             String      @unique
+  password          String
+  phone_number      String
+  gender            String
+  preferred_gender  String
+  longitude         String
+  latitude          String
+  dating_type       String
   // location         Unsupported("geography(Point, 4326)")
-  geohash          String
-  occupation       String
-  region           String
-  religion         String
-  date_of_birth    String
-  home_town        String
-  age              Int
-  behaviour        Behaviour[]
-  bloom_filter     String
-  images           Images[]
-  liked_by         Likes[]     @relation("liked_by")
-  liked_received   Likes[]     @relation("liked_received")
-  matched_id       Int?
-  matches          User[]      @relation("matches")
-  user             User?       @relation("matches", fields: [matched_id], references: [id])
-  chats_received   Chats[]     @relation("chats_received")
-  chats_sent       Chats[]     @relation("chats_sent")
+  geohash           String
+  occupation        String
+  region            String
+  religion          String
+  date_of_birth     String
+  home_town         String
+  age               Int
+  behaviour         Behaviour[]
+  bloom_filter      String
+  images            Images[]
+  liked_by          Likes[]     @relation("liked_by")
+  liked_received    Likes[]     @relation("liked_received")
+  matches_initiated Matches[]   @relation("match_initiated")
+  matches_accepted  Matches[]   @relation("match_accepted")
+  chats_received    Chats[]     @relation("chats_received")
+  chats_sent        Chats[]     @relation("chats_sent")
 
   @@index([age, geohash])
 }
@@ -76,6 +76,8 @@ model Likes {
   behaviour_id Int?
   behaviour    Behaviour? @relation(fields: [behaviour_id], references: [id])
   comment      String
+
+  @@unique([liked_by, liked_to])
 }
 
 model Chats {
@@ -86,4 +88,12 @@ model Chats {
   sender      User     @relation("chats_sent", fields: [sender_id], references: [id])
   receiver    User     @relation("chats_received", fields: [receiver_id], references: [id])
   created_at  DateTime @default(now())
+}
+
+model Matches {
+  id               Int  @id @default(autoincrement())
+  first_person_id  Int
+  second_person_id Int
+  first_person     User @relation("match_initiated", fields: [first_person_id], references: [id])
+  second_person    User @relation("match_accepted", fields: [second_person_id], references: [id])
 }

@@ -5,14 +5,14 @@ export const LoginSchema = z.object({
 })
 
 export const ImageLikedSchema = z.object({
-    likedUserId: z.string(),
-    imageId: z.string(),
+    likedUserId: z.number(),
+    imageId: z.number(),
     comment: z.string(),
 })
 
 export const BehaviourLikedSchema = z.object({
-    likedUserId: z.string(),
-    behaviourId: z.string(),
+    likedUserId: z.number(),
+    behaviourId: z.number(),
     comment: z.string()
 })
 
@@ -35,13 +35,16 @@ export const RegistrationSchema = z.object({
     region: z.string(),           
     religion: z.string(),         
     date_of_birth: z.string(),    
-    home_town:z.string()        
+    home_town:z.string(),
+    dating_type:z.string()        
 })
 
 export const RejectSchema = z.object({
-    rejectedUserId:z.string()
+    rejectedUserId:z.number()
 })
-
+export const AcceptSchema = z.object({
+    acceptedUserId:z.number()
+})
 export type TRegistrationSchema = z.infer<typeof RegistrationSchema>;
 
 export interface Behaviour{

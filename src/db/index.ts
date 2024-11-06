@@ -16,24 +16,33 @@ const prismaClientSingleton = () => {
                 }){
                     
                     const point = `POINT(${data.longitude} ${data.latitude})`;
-                    const newUser:User&{
-                        id:number
-                    } = await prisma.$queryRaw`
-                        INSERT INTO "User" (
-                        first_name, last_name, email, password, phone_number, age, gender, preferred_gender, 
-                        geohash, bloom_filter, latitude, longitude, occupation, region, religion, date_of_birth, home_town
-                        ) VALUES (
-                        ${data.firstName}, ${data.lastName}, ${data.email}, ${data.password},
-                        ${data.phoneNumber}, ${data.age}, ${data.gender}, ${data.preferredGender}, 
-                        -- ST_GeomFromText(${point}, 4326),
-                        ${data.geohash}, ${data.bloom_filter}, ${data.latitude}, ${data.longitude}, 
-                        ${data.occupation}, ${data.region}, ${data.religion}, ${data.date_of_birth}, ${data.home_town}
-                        )
-                        RETURNING id, first_name, last_name, email, phone_number, age, gender, preferred_gender, 
-                        geohash, bloom_filter, latitude, longitude, occupation, region, religion, date_of_birth, home_town;
-                    `;
-                                        
-                    return newUser;
+                    try{
+                        const newUser:User&{
+                            id:number
+                        } = await prisma.$queryRaw`
+                            INSERT INTO "User" (
+                            first_name, last_name, email, password, phone_number, age, gender, preferred_gender, 
+                            geohash, bloom_filter, latitude, longitude, occupation, region, religion, date_of_birth, home_town,
+                            dating_type
+                            ) VALUES (
+                            ${data.firstName}, ${data.lastName}, ${data.email}, ${data.password},
+                            ${data.phoneNumber}, ${data.age}, ${data.gender}, ${data.preferredGender}, 
+                            -- ST_GeomFromText(${point}, 4326),
+                            ${data.geohash}, ${data.bloom_filter}, ${data.latitude}, ${data.longitude}, 
+                            ${data.occupation}, ${data.region}, ${data.religion}, ${data.date_of_birth}, ${data.home_town},
+                            ${data.dating_type}
+                            )
+                            RETURNING id, first_name, last_name, email, phone_number, age, gender, preferred_gender, 
+                            geohash, bloom_filter, latitude, longitude, occupation, region, religion, date_of_birth, home_town , dating_type;
+                        `;
+                                            
+                        return newUser;
+                    }
+                    catch(err){
+                        console.error("Error inserting user" , err);
+                        throw err;
+                    }
+                    
                 }
             }
         }

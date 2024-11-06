@@ -1,5 +1,5 @@
 import {Request, Response, Router} from "express";
-import { BehaviourLikedSchema, ImageLikedSchema, LoginSchema, RegistrationSchema, RejectSchema } from "../zod";
+import { AcceptSchema, BehaviourLikedSchema, ImageLikedSchema, LoginSchema, RegistrationSchema, RejectSchema } from "../zod";
 import prisma from "../db";
 import jwt from "jsonwebtoken";
 import { authMiddleware, CustomRequest } from "../middleware";
@@ -8,8 +8,9 @@ import multer from "multer";
 import multerS3 from "multer-s3";
 import bcrypt from "bcrypt";
 import BitSet from "bitset";
-import { calculateAge, updateAddBloomFilter } from "../helpers";
+import { calculateAge, checkIfExistsInBloom, updateAddBloomFilter } from "../helpers";
 import ngeohash from "ngeohash";
+import { User } from "@prisma/client";
 
 
 const s3Client = new S3Client({
@@ -70,8 +71,10 @@ router.post('/login' , async (req:Request, res:Response)=>{
 
 router.post("/imageLiked" , authMiddleware ,async (req:CustomRequest, res:Response)=>{
     const imageLikedDetails = req.body;
+    console.log(imageLikedDetails);
     const parsedResult = ImageLikedSchema.safeParse(imageLikedDetails);
     if(!parsedResult.success){
+        console.log(parsedResult.error);
         res.status(400).json({message:"Invalid Body"});
         return;
     }
@@ -204,7 +207,7 @@ router.post("/register" , upload.array("images") , async (req, res:Response)=>{
         // hash the password
         const passwordHash = await bcrypt.hash(parsedResult.data.password, 10);
         const age = calculateAge(parsedResult.data.date_of_birth);
-        
+        console.log(parsedResult.data , age);
         try{
             
             // Create images Array 
@@ -227,10 +230,7 @@ router.post("/register" , upload.array("images") , async (req, res:Response)=>{
                     preferredGender:parsedResult.data.preferredGender,
                     latitude:parsedResult.data.latitude,
                     longitude:parsedResult.data.longitude,
-                    // location:{
-                    //     latitude:Number(parsedResult.data.latitude),
-                    //     longitude:Number(parsedResult.data.longitude)
-                    // },
+                    dating_type:parsedResult.data.dating_type,
                     geohash:geohash,
                     bloom_filter: new BitSet().toString()
                 })
@@ -295,14 +295,26 @@ router.post("/reject" , authMiddleware , async (req:CustomRequest, res:Response)
         }
         // update bloom filter
         const updatedBloomFilter = updateAddBloomFilter(user.bloom_filter , parsedResult.data.rejectedUserId);
-        await prisma.user.update({
-            where:{
-                id:Number(req.userId!)
-            },
-            data:{
-                bloom_filter:updatedBloomFilter
-            }
+        
+        await prisma.$transaction(async (tx)=>{
+            // update user bloom filter
+            await tx.user.update({
+                where:{
+                    id:Number(req.userId!)
+                },
+                data:{
+                    bloom_filter:updatedBloomFilter
+                }
+            })
+            // remove this user from likes as well if exists 
+            await tx.likes.deleteMany({
+                where:{
+                    liked_by:Number(parsedResult.data.rejectedUserId),
+                    liked_to:Number(req.userId!)
+                }
+            })
         })
+        console.log("rejected successfully");
         res.status(200).json({message:"Rejected successfully"});
     }
     catch(err){
@@ -329,12 +341,28 @@ router.get("/allLikes" , authMiddleware , async(req:CustomRequest, res:Response)
             include:{
                 by_user:{
                     select:{
+                        id:true,
                         first_name:true,
-                        images:true,
+                        images:{
+                            select:{
+                                url:true,
+                            }
+                        }
                     }
                 },
-                image:true,
-                behaviour:true
+                image:{
+                    select:{
+                        url:true,
+                        id:true
+                    }
+                },
+                behaviour:{
+                    select:{
+                        question:true,
+                        answer:true,
+                        id:true
+                    }
+                }
             }
         })
         res.status(200).json(likes);
@@ -350,6 +378,35 @@ router.get("/me" , authMiddleware , async(req:CustomRequest, res:Response)=>{
         const user = await prisma.user.findUnique({
             where:{
                 id:Number(req.userId!)
+            },
+            select:{
+                id:true,
+                first_name:true,
+                last_name:true,
+                email:true,
+                phone_number:true,
+                age:true,
+                gender:true,
+                preferred_gender:true,
+                occupation:true,
+                region:true,
+                religion:true,
+                date_of_birth:true,
+                home_town:true,
+                dating_type:true,
+                images:{
+                    select:{
+                        url:true,
+                        id:true
+                    }
+                },
+                behaviour:{
+                    select:{
+                        question:true,
+                        answer:true,
+                        id:true
+                    }
+                }
             }
         })
         if(!user){
@@ -364,9 +421,89 @@ router.get("/me" , authMiddleware , async(req:CustomRequest, res:Response)=>{
     }
 })
 
+router.get("/profile/:id", authMiddleware , async (req:CustomRequest, res:Response)=>{
+    const otherUserId = req.params.id;
+    console.log("profile route called");
+    if(!otherUserId){
+        res.status(400).json({message:"Invalid Request"});
+        return;
+    }
+    try{
+        // check user exists
+        const user = await prisma.user.findUnique({
+            where:{
+                id:Number(req.userId!)
+            }
+        })
+        if(!user){
+            res.status(400).json({message:"User not found"});
+            return;
+        }
+        // check this user can see this profile or not 
+
+        const likedUser = await prisma.likes.findUnique({
+            where:{
+                liked_by_liked_to:{
+                    liked_by:Number(req.params.id),
+                    liked_to:Number(req.userId!),
+                }
+            }
+        })
+        if(!likedUser){
+            res.status(400).json({message:"Not authorized"});
+            return;
+        }
+        const otherUser = await prisma.user.findUnique({
+            where:{
+                id:Number(otherUserId)
+            },
+            select:{
+                id:true,
+                first_name:true,
+                last_name:true,
+                email:true,
+                phone_number:true,
+                age:true,
+                gender:true,
+                preferred_gender:true,
+                occupation:true,
+                region:true,
+                religion:true,
+                date_of_birth:true,
+                home_town:true,
+                dating_type:true,
+                images:{
+                    select:{
+                        url:true,
+                        id:true
+                    }
+                },
+                behaviour:{
+                    select:{
+                        question:true,
+                        answer:true,
+                        id:true
+                    }
+                }
+            }
+        })
+        if(!otherUser){
+            console.log("user not found");
+            res.status(400).json({message:"User not found"});
+            return;
+        }
+        console.log(otherUser);
+        res.status(200).json(otherUser);
+    }
+    catch(err){
+        console.error("getProfile Failed" , err);
+        res.status(500).json({message:"Internal Server Error"});
+    }
+})
+
 router.get("/chats/:id", authMiddleware , async (req:CustomRequest, res:Response)=>{
     const otherUserId = req.params.id;
-    if(!otherUserId || typeof otherUserId !== "string"){
+    if(!otherUserId){
         res.status(400).json({message:"Invalid Request"});
         return;
     }
@@ -401,8 +538,119 @@ router.get("/chats/:id", authMiddleware , async (req:CustomRequest, res:Response
             })
             return [...sender_chat , ...receiver_chat];
         })
-        chats = chats.sort((a,b)=>b.created_at.getTime()-a.created_at.getTime());
+        chats = chats.sort((a,b)=>a.created_at.getTime()-b.created_at.getTime());
         res.status(200).json(chats);
+    }
+    catch(err){
+        console.error("getChats Failed" , err);
+        res.status(500).json({message:"Internal Server Error"});
+    }
+})
+    
+router.get('/allMatches', authMiddleware , async (req:CustomRequest, res:Response)=>{
+    try{
+        const user = await prisma.user.findUnique({
+            where:{
+                id:Number(req.userId!)
+            },
+            include:{
+                matches_accepted:{
+                    select:{
+                        id:true,
+                        first_person:{
+                            select:{
+                                id:true,
+                                first_name:true,
+                                images:{
+                                    select:{
+                                        id:true,
+                                        url:true
+                                    }
+                                },
+                                chats_sent:{
+                                    take:1,
+                                    orderBy:{
+                                        created_at:"desc"
+                                    },
+                                    select:{
+                                        message:true,
+                                        created_at:true,
+                                    }
+                                },
+                                chats_received:{
+                                    take:1,
+                                    orderBy:{
+                                        created_at:"desc"
+                                    },
+                                    select:{
+                                        message:true,
+                                        created_at:true,
+                                    }
+                                }
+                            }
+                        }
+                        
+                    }
+                },
+                matches_initiated:{
+                    select:{
+                        second_person:{
+                            select:{
+                                id:true,
+                                first_name:true,
+                                images:{
+                                    select:{
+                                        id:true,
+                                        url:true,
+                                    }
+                                },
+                                chats_sent:{
+                                    take:1,
+                                    orderBy:{
+                                        created_at:"desc"
+                                    },
+                                    select:{
+                                        message:true,
+                                        created_at:true,
+                                    }
+                                },
+                                chats_received:{
+                                    take:1,
+                                    orderBy:{
+                                        created_at:"desc"
+                                    },
+                                    select:{
+                                        message:true,
+                                        created_at:true,
+                                    }
+                                }
+                            }
+                        }
+                        
+                    }
+            }
+            }
+        })
+
+        if(!user){
+            res.status(400).json({message:"User not found"});
+            return;
+        }
+        let people = new Map();
+        if(user?.matches_accepted){
+            user.matches_accepted.forEach(match=>{
+                people.set(match.first_person.id , match.first_person);
+            })
+        };
+        if(user?.matches_initiated){
+            user.matches_initiated.forEach(match=>{
+                people.set(match.second_person.id , match.second_person);
+            })
+        };
+        console.log(JSON.stringify(Array.from(people.values())));
+        res.status(200).json({
+            people:Array.from(people.values())
+        });
     }
     catch(err){
         console.error("getChats Failed" , err);
@@ -424,28 +672,130 @@ router.get("/matches" , authMiddleware , async (req:CustomRequest, res:Response)
         }
         // find all neighbour hash 
         const neighbour = ngeohash.neighbors(user.geohash);
-        const geohashes = [...neighbour, user.geohash];
+        let geohashes = [user.geohash];
+        // find neighbour of this geohash as well 
+        for(let i in neighbour){
+            const neigh2 = ngeohash.neighbors(neighbour[i]);
+            geohashes = [...geohashes, ...neigh2];
+        }
         console.log(geohashes);
         //Execute raw query using approximate and precise filtering
-        const preciseResults = await prisma.$queryRaw`
-            SELECT * FROM "User"
-            WHERE geohash = ANY(${geohashes})
-            AND id != ${user.id}
-            AND ST_DWithin(
-                ST_SetSRID(ST_MakePoint(longitude::double precision, latitude::double precision), 4326),
-                ST_SetSRID(ST_MakePoint(${Number(user.longitude)}, ${Number(user.latitude)}), 4326)::geography,
-                100 * 1000  -- Radius in meters
-            )
-            AND gender = ${user.preferred_gender}
-            
+        const preciseResults:User[] = await prisma.$queryRaw`
+            SELECT 
+                "User".id,
+                "User".first_name,
+                "User".last_name,
+                "User".email,
+                "User".phone_number,
+                "User".age,
+                "User".gender,
+                "User".preferred_gender,
+                "User".occupation,
+                "User".region,
+                "User".religion,
+                "User".date_of_birth,
+                "User".home_town,
+                "User".dating_type,
+                json_agg(DISTINCT "Images") AS images,        -- Aggregate related images into a JSON array
+                json_agg(DISTINCT "Behaviour") AS behaviour -- Aggregate related behaviours into a JSON array
+            FROM "User"
+            LEFT JOIN "Images" ON "User".id = "Images".user_id          -- Join with Images table
+            LEFT JOIN "Behaviour" ON "User".id = "Behaviour".user_id  -- Join with Behaviours table
+            WHERE 
+                geohash = ANY(${geohashes})
+                AND "User".id != ${user.id}
+                AND ST_DWithin(
+                    ST_SetSRID(ST_MakePoint("User".longitude::double precision, "User".latitude::double precision), 4326),
+                    ST_SetSRID(ST_MakePoint(${Number(user.longitude)}, ${Number(user.latitude)}), 4326)::geography,
+                    100 * 1000  -- Radius in meters
+                )
+                AND "User".gender = ${user.preferred_gender}
+            GROUP BY "User".id  -- Group by User ID to aggregate images and behaviours
+            LIMIT 10; -- Limit to 10 results
         `;
 
-        res.status(200).json(preciseResults);
+        let filteredResults = [];
+        const userBloom = user.bloom_filter;
+        for(const result of preciseResults){
+                // check this user exits in bloom or not 
+            if(!checkIfExistsInBloom(userBloom , result.id)){
+                filteredResults.push(result);
+            }
+        }
+        res.status(200).json(filteredResults);
     }
     catch(err){
         console.error("getMatches Failed" , err);
         res.status(500).json({message:"Internal Server Error"});
     }
+})
+
+router.post('/accept' , authMiddleware , async (req:CustomRequest, res:Response)=>{
+    const acceptDetails = req.body;
+    console.log(acceptDetails);
+    const parsedResult = AcceptSchema.safeParse(acceptDetails);
+    if(!parsedResult.success){
+        console.log(parsedResult.error);
+        res.status(400).json({message:"Invalid Body"});
+        return;
+    }
+    try{
+        // check user exists
+        const user = await prisma.user.findUnique({
+            where:{
+                id:Number(req.userId!)
+            }
+        })
+        if(!user){
+            res.status(400).json({message:"User not found"});
+            return;
+        }
+        // check this user exists 
+        const otherUser = await prisma.user.findUnique({
+            where:{
+                id:Number(parsedResult.data.acceptedUserId)
+            }
+        })
+        if(!otherUser){
+            res.status(400).json({message:"User not found"});
+            return;
+        }
+        // update bloom filter
+        const updatedBloomFilter = updateAddBloomFilter(user.bloom_filter , parsedResult.data.acceptedUserId);
+
+        await prisma.$transaction(async (tx)=>{
+            // remove this user from likes 
+            await tx.likes.deleteMany({
+                where:{
+                    liked_by:Number(parsedResult.data.acceptedUserId),
+                    liked_to:Number(req.userId!)
+                }
+            })
+            // add this user to matches
+            await tx.user.update({
+                where:{
+                    id:Number(req.userId!)
+                },
+                data:{
+                    bloom_filter:updatedBloomFilter,
+                }
+            })
+            // create match 
+            await tx.matches.create({
+                data:{
+                    first_person_id:Number(parsedResult.data.acceptedUserId),
+                    second_person_id:Number(req.userId!)
+                }
+            })
+        })
+        
+        console.log("accepted successfully");
+        res.status(200).json({message:"Accepted successfully"});
+    }
+    catch(err){
+        console.error("Accept Failed" , err);
+        res.status(500).json({message:"Internal Server Error"});
+    }    
 })
 
 

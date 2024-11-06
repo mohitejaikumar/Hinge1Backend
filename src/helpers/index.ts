@@ -5,7 +5,7 @@ import BitSet from "bitset";
 const numberOfHashes = Number(process.env.HASH_SIZE!);
 const numberOfBits = Number(process.env.BLOOM_FILTER_SIZE!);
 
-export const updateAddBloomFilter = (filter:string , item:string): string =>{
+export const updateAddBloomFilter = (filter:string , item:number): string =>{
     
     let oldBitset = new BitSet(filter);
     
@@ -14,11 +14,22 @@ export const updateAddBloomFilter = (filter:string , item:string): string =>{
         oldBitset = new BitSet();
     }
     for(let i=0;i<numberOfHashes;i++){
-        const index = murmurhash.v3(item,i)%numberOfBits;
+        const index = murmurhash.v3(String(item),i)%numberOfBits;
         oldBitset.set(index);
     }
 
-    return oldBitset.toString(numberOfBits);
+    return oldBitset.toString();
+}
+
+export const checkIfExistsInBloom = (filter:string , item:number):boolean =>{
+    const bitset = new BitSet(filter);
+    for(let i=0;i<numberOfHashes;i++){
+        const index = murmurhash.v3(String(item),i)%numberOfBits;
+        if(!bitset.get(index)){
+            return false;
+        }
+    }
+    return true;
 }
 
 
