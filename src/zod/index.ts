@@ -43,7 +43,11 @@ export const RejectSchema = z.object({
     rejectedUserId:z.number()
 })
 export const AcceptSchema = z.object({
-    acceptedUserId:z.number()
+    acceptedUserId:z.number(),
+    message:z.string(),
+})
+export const GoogleLoginSchema = z.object({
+    email:z.string().email(),
 })
 export type TRegistrationSchema = z.infer<typeof RegistrationSchema>;
 

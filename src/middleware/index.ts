@@ -15,9 +15,9 @@ export const authMiddleware = (req:CustomRequest, res:Response, next:NextFunctio
     }
 
     try{
-        // const decodedToken = jwt.verify(token,process.env.JWT_SECRET! );
+        const decodedToken = jwt.verify(token,process.env.JWT_SECRET! );
         //@ts-ignore
-        req.userId = 34;
+        req.userId = decodedToken.userId;
         next();
     }
     catch(err){

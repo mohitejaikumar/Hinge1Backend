@@ -66,13 +66,6 @@ export default class ChatManager{
                 console.log("User not found");
                 return;
             }
-            // send message check if both websocket are connected 
-            const senderWs = this.users.get(senderId);
-            const receiverWs = this.users.get(receiverId);
-            if(!senderWs || !receiverWs){
-                console.log("ws connection not found");
-                return;
-            }
             // update db 
             await prisma.chats.create({
                 data:{
@@ -82,6 +75,12 @@ export default class ChatManager{
                 }
             })
             console.log("updated chats in db");
+            // send message check if receiver socket it there 
+            const receiverWs = this.users.get(receiverId);
+            if(!receiverWs){
+                console.log("ws connection not found");
+                return;
+            }
             receiverWs.socket.send(JSON.stringify({
                 type:"chat",
                 payload:{

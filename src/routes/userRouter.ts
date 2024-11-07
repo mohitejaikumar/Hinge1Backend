@@ -1,5 +1,5 @@
 import {Request, Response, Router} from "express";
-import { AcceptSchema, BehaviourLikedSchema, ImageLikedSchema, LoginSchema, RegistrationSchema, RejectSchema } from "../zod";
+import { AcceptSchema, BehaviourLikedSchema, GoogleLoginSchema, ImageLikedSchema, LoginSchema, RegistrationSchema, RejectSchema } from "../zod";
 import prisma from "../db";
 import jwt from "jsonwebtoken";
 import { authMiddleware, CustomRequest } from "../middleware";
@@ -67,6 +67,35 @@ router.post('/login' , async (req:Request, res:Response)=>{
     },process.env.JWT_SECRET!);
 
     res.json({token});
+})
+
+router.post('/googleLogin' , async (req:Request, res:Response)=>{
+    const googleLoginDetails = req.body;
+    const parsedResult = GoogleLoginSchema.safeParse(googleLoginDetails);
+    if(!parsedResult.success){
+        res.status(400).json({message:"Invalid Body"});
+        return;
+    }
+    try{
+        const user = await prisma.user.findUnique({
+            where:{
+                email:parsedResult.data.email
+            }
+        })
+        if(!user){
+            res.status(400).json({message:"User not found"});
+            return;
+        }
+        const token = jwt.sign({
+            userId:user.id
+        },process.env.JWT_SECRET!);
+
+        res.json({token});
+    }
+    catch(err){
+        console.error("googleLogin Failed" , err);
+        res.status(500).json({message:"Internal Server Error"});
+    }
 })
 
 router.post("/imageLiked" , authMiddleware ,async (req:CustomRequest, res:Response)=>{
@@ -771,7 +800,7 @@ router.post('/accept' , authMiddleware , async (req:CustomRequest, res:Response)
                     liked_to:Number(req.userId!)
                 }
             })
-            // add this user to matches
+            // update bloom filter
             await tx.user.update({
                 where:{
                     id:Number(req.userId!)
@@ -785,6 +814,13 @@ router.post('/accept' , authMiddleware , async (req:CustomRequest, res:Response)
                 data:{
                     first_person_id:Number(parsedResult.data.acceptedUserId),
                     second_person_id:Number(req.userId!)
+                }
+            })
+            await tx.chats.create({
+                data:{
+                    sender_id:Number(req.userId!),
+                    receiver_id:Number(parsedResult.data.acceptedUserId),
+                    message:parsedResult.data.message
                 }
             })
         })
