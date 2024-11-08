@@ -16,7 +16,7 @@ wss.on('connection', function connection(ws) {
     ws.on('message', async(raw:{
         toString():string,
     })=>{
-        console.log('received: %s', raw);
+        
         const {type , payload} = JSON.parse(raw.toString());
         let userId="";
         // check token 
@@ -57,7 +57,7 @@ app.get("/", (req,res)=>{
 })
 
 app.post('/upload' , async (req,res)=>{
-    console.log(req.body);
+    
     res.send("Uploaded");
 })
 

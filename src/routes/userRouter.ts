@@ -44,7 +44,7 @@ router.post('/login' , async (req:Request, res:Response)=>{
     
     const parsedResult = LoginSchema.safeParse(loginDetails);
     if(!parsedResult.success){
-        res.status(400).json({message:"Invalid Body"});
+        res.status(400).json({message:"Invalid Inputs"});
         return;
     }
     const user = await prisma.user.findUnique({
@@ -100,7 +100,7 @@ router.post('/googleLogin' , async (req:Request, res:Response)=>{
 
 router.post("/imageLiked" , authMiddleware ,async (req:CustomRequest, res:Response)=>{
     const imageLikedDetails = req.body;
-    console.log(imageLikedDetails);
+    
     const parsedResult = ImageLikedSchema.safeParse(imageLikedDetails);
     if(!parsedResult.success){
         console.log(parsedResult.error);
@@ -240,7 +240,7 @@ router.post("/register" , upload.array("images") , async (req, res:Response)=>{
         try{
             
             // Create images Array 
-            const user = await prisma.$transaction(async (tx)=>{
+            const userId = await prisma.$transaction(async (tx)=>{
                 console.log("inside transaction");
                 // Create new user
                 const user = await tx.user.create({
@@ -289,13 +289,13 @@ router.post("/register" , upload.array("images") , async (req, res:Response)=>{
                         })
                     })
                 }
-                return user;
+                return userId?.id;
             })
 
             const token = jwt.sign({
-                userId:user.id
+                userId:userId
             },process.env.JWT_SECRET!);
-
+            
             res.status(200).json({token});
         }
         catch(err){
@@ -521,7 +521,7 @@ router.get("/profile/:id", authMiddleware , async (req:CustomRequest, res:Respon
             res.status(400).json({message:"User not found"});
             return;
         }
-        console.log(otherUser);
+        
         res.status(200).json(otherUser);
     }
     catch(err){
@@ -583,6 +583,7 @@ router.get('/allMatches', authMiddleware , async (req:CustomRequest, res:Respons
                 id:Number(req.userId!)
             },
             include:{
+                
                 matches_accepted:{
                     select:{
                         id:true,
@@ -676,9 +677,10 @@ router.get('/allMatches', authMiddleware , async (req:CustomRequest, res:Respons
                 people.set(match.second_person.id , match.second_person);
             })
         };
-        console.log(JSON.stringify(Array.from(people.values())));
+        
         res.status(200).json({
-            people:Array.from(people.values())
+            people:Array.from(people.values()),
+            id:user.id
         });
     }
     catch(err){
@@ -707,7 +709,7 @@ router.get("/matches" , authMiddleware , async (req:CustomRequest, res:Response)
             const neigh2 = ngeohash.neighbors(neighbour[i]);
             geohashes = [...geohashes, ...neigh2];
         }
-        console.log(geohashes);
+        
         //Execute raw query using approximate and precise filtering
         const preciseResults:User[] = await prisma.$queryRaw`
             SELECT 
@@ -761,7 +763,7 @@ router.get("/matches" , authMiddleware , async (req:CustomRequest, res:Response)
 
 router.post('/accept' , authMiddleware , async (req:CustomRequest, res:Response)=>{
     const acceptDetails = req.body;
-    console.log(acceptDetails);
+    
     const parsedResult = AcceptSchema.safeParse(acceptDetails);
     if(!parsedResult.success){
         console.log(parsedResult.error);
