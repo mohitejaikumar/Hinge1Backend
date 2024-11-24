@@ -33,12 +33,14 @@ export const checkIfExistsInBloom = (filter:string , item:number):boolean =>{
 }
 
 
-export function calculateAge(dob:string) {
-    const birthDate = new Date(dob);
+export function calculateAge(dob: string): number {
+    // Convert from dd-mm-yyyy to yyyy-mm-dd for correct parsing
+    const [day, month, year] = dob.split('-').map(Number);
+    const birthDate = new Date(year, month - 1, day); // month is 0-indexed
+    
     const today = new Date();
-    
     let age = today.getFullYear() - birthDate.getFullYear();
-    
+
     // Adjust if the birthday hasn't occurred yet this year
     const hasBirthdayOccurred = 
         today.getMonth() > birthDate.getMonth() || 
